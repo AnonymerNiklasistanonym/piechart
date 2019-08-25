@@ -292,6 +292,40 @@ char* generate_color(char* mode, int slice){
 	return color;
 }
 
+// Macro copied from here: http://man7.org/linux/man-pages/man3/getline.3.html
+// Code copied from here: https://gist.github.com/bellbind/966082b01fc39fffc8853b668942c36c
+#if _POSIX_C_SOURCE >= 200809L
+#else
+static inline int
+alloc_line(char** restrict pline, size_t* restrict plsize, size_t newsize) {
+  void* n = realloc(*pline, newsize);
+  if (n == NULL) return -1;
+  *pline = n;
+  *plsize = newsize;
+  return 0;
+}
+static ssize_t
+getline1(char** restrict pline, size_t* restrict plsize, FILE* restrict fp) {
+  //if (*plsize < 128) if (alloc_line(pline, plsize, 128)) return -1;
+  if (*plsize < 2) if (alloc_line(pline, plsize, 2)) return -1;
+  if (*pline == NULL) return -1;
+  if (feof(fp)) return -1;
+  char* cur = *pline;
+  size_t cursize = *plsize;
+  for (;;) {
+    char* ret = fgets(cur, cursize, fp);
+    if (ret == NULL && !feof(fp)) return -1; //=> read error
+    if (ret == NULL && cur == *pline) return -1; //=> read empty
+    char* eod = memchr(cur, '\0', cursize);
+    if (feof(fp) || eod[-1] == '\n') return eod - *pline;
+    // line continued
+    cursize = *plsize + 1; // last of *pline is '\0'
+    if (alloc_line(pline, plsize, *plsize * 2)) return -1;
+    cur = *pline + *plsize - cursize;
+  }
+}
+#endif
+
 int gather_data(){
 	char* line_buffer = NULL, *token = NULL;
 	size_t line_buffer_length = 0;
@@ -299,7 +333,11 @@ int gather_data(){
 
 	//read lines into slices
 	do {
+		#if _POSIX_C_SOURCE >= 200809L
 		bytes_read = getline(&line_buffer, &line_buffer_length, PIECHART.input_handle);
+		#else
+		bytes_read = getline1(&line_buffer, &line_buffer_length, PIECHART.input_handle);
+		#endif
 		//kill the newline
 		for(i = bytes_read - 1; i >= 0 && isspace(line_buffer[i]); i--){
 			line_buffer[i] = 0;
